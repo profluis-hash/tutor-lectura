@@ -59,9 +59,10 @@
             const [isAnalyzing, setIsAnalyzing] = useState(false);
             const [analysisProgress, setAnalysisProgress] = useState('');
             const [showReadingModal, setShowReadingModal] = useState(false);
+            const [error, setError] = useState(null);
             
             const fileInputRef = useRef(null);
-            const apiKey = "AIzaSyDgPmh39Zy-FWsJEk-gYk92qyyb7PHWWp8"; 
+            const apiKey = "AIzaSyDgPmh39Zy-FWsJEk-gYk92qyyb7PHWWp8"; // RECUERDA: Debes colocar tu clave de Google Gemini aquí
 
             useEffect(() => {
                 if (window.pdfjsLib) {
@@ -74,6 +75,7 @@
                 if (!file) return;
                 setIsAnalyzing(true);
                 setAnalysisProgress('Leyendo archivo...');
+                setError(null);
                 try {
                     if (file.type === 'application/pdf') {
                         const arrayBuffer = await file.arrayBuffer();
@@ -91,6 +93,7 @@
                     }
                 } catch (error) {
                     console.error("Error al leer archivo:", error);
+                    setError("No pudimos leer el archivo. Intenta copiar y pegar el texto.");
                 } finally {
                     setIsAnalyzing(false);
                 }
@@ -98,8 +101,15 @@
 
             const generateQuestions = async () => {
                 if (!originalText.trim()) return;
+                if (!apiKey) {
+                    alert("Por favor, ingresa una API Key válida en el código para que el tutor funcione.");
+                    return;
+                }
+
                 setIsAnalyzing(true);
                 setAnalysisProgress('Analizando lectura y diseñando retos...');
+                setError(null);
+
                 const needsAdaptation = originalText.toLowerCase().includes('internacional') || originalText.toLowerCase().includes('international');
                 setIsInternational(needsAdaptation);
 
@@ -122,13 +132,18 @@
                             generationConfig: { responseMimeType: "application/json", temperature: 0.7 }
                         })
                     });
+
+                    if (!response.ok) throw new Error("Error en la comunicación con la IA");
+
                     const data = await response.json();
                     const res = JSON.parse(data.candidates[0].content.parts[0].text);
+                    
                     setAdaptedText(res.adaptedText || originalText);
                     setQuestions(res.questions || []);
                     setStep('quiz');
                 } catch (e) { 
                     console.error("Error en la IA:", e);
+                    setError("Hubo un problema al generar las preguntas. Revisa tu conexión o tu API Key.");
                 } finally { 
                     setIsAnalyzing(false); 
                 }
@@ -154,6 +169,13 @@
                             )}
                         </header>
 
+                        {error && (
+                            <div className="mb-6 bg-red-50 border border-red-100 text-red-600 p-4 rounded-2xl text-sm flex items-center gap-3">
+                                <Icon name="AlertCircle" size={20} />
+                                {error}
+                            </div>
+                        )}
+
                         {step === 'input' && (
                             <div className="bg-white p-8 rounded-3xl border border-slate-200 shadow-sm space-y-6 animate-in">
                                 <div onClick={() => fileInputRef.current?.click()} className="border-2 border-dashed border-slate-200 p-10 rounded-2xl text-center cursor-pointer hover:border-blue-400 hover:bg-blue-50 transition-all group">
@@ -162,8 +184,17 @@
                                     <p className="font-bold text-slate-700 text-lg">Subir Lectura (PDF o TXT)</p>
                                     <p className="text-sm text-slate-400">Haz clic aquí para cargar tu archivo</p>
                                 </div>
-                                <textarea className="w-full h-44 p-5 bg-slate-50 border border-slate-100 rounded-2xl outline-none focus:ring-4 focus:ring-blue-500/10 transition-all resize-none text-slate-700" placeholder="Pega aquí el contenido..." value={originalText} onChange={(e) => setOriginalText(e.target.value)} />
-                                <button onClick={generateQuestions} disabled={!originalText.trim() || isAnalyzing} className="w-full bg-blue-600 hover:bg-blue-700 disabled:bg-slate-300 text-white py-5 rounded-2xl font-black text-lg shadow-xl shadow-blue-100 transition-all active:scale-[0.98]">
+                                <textarea 
+                                    className="w-full h-44 p-5 bg-slate-50 border border-slate-100 rounded-2xl outline-none focus:ring-4 focus:ring-blue-500/10 transition-all resize-none text-slate-700" 
+                                    placeholder="Pega aquí el contenido..." 
+                                    value={originalText} 
+                                    onChange={(e) => setOriginalText(e.target.value)} 
+                                />
+                                <button 
+                                    onClick={generateQuestions} 
+                                    disabled={!originalText.trim() || isAnalyzing} 
+                                    className="w-full bg-blue-600 hover:bg-blue-700 disabled:bg-slate-300 text-white py-5 rounded-2xl font-black text-lg shadow-xl shadow-blue-100 transition-all active:scale-[0.98]"
+                                >
                                     {isAnalyzing ? "Generando 10 retos..." : "Comenzar Tutoría"}
                                 </button>
                             </div>
@@ -179,7 +210,7 @@
                                     <div key={q.id || i} className="bg-white p-8 rounded-3xl border border-slate-200 shadow-sm">
                                         <div className="flex justify-between items-center mb-5">
                                             <span className="text-[10px] font-black uppercase tracking-widest text-slate-300">Reto {i+1} de 10</span>
-                                            <span className={`text-[9px] font-black px-3 py-1 rounded-full uppercase tracking-widest ${q.level === 'crítico' ? 'bg-purple-50 text-purple-600' : q.level === 'inferencial' ? 'bg-amber-50 text-amber-600' : 'bg-blue-50 text-blue-600'}`}>{q.level}</span>
+                                            <span className={`text-[9px] font-black px-3 py-1 rounded-full uppercase tracking-widest ${q.level === 'crítico' || q.level === 'crítico' ? 'bg-purple-50 text-purple-600' : q.level === 'inferencial' ? 'bg-amber-50 text-amber-600' : 'bg-blue-50 text-blue-600'}`}>{q.level}</span>
                                         </div>
                                         <p className="font-bold text-slate-800 mb-6 leading-snug text-xl">{q.question}</p>
                                         <div className="grid gap-3">
@@ -204,7 +235,7 @@
                                 <div className="bg-white rounded-[3rem] max-w-2xl w-full max-h-[85vh] flex flex-col overflow-hidden shadow-2xl border border-white/20">
                                     <div className="p-8 border-b border-slate-100 flex justify-between items-center bg-blue-50/50">
                                         <div className="flex items-center gap-3"><div className="text-blue-600"><Icon name="BookOpen" size={24} /></div><h2 className="font-black text-slate-900 uppercase text-sm tracking-widest">Texto de Apoyo</h2></div>
-                                        <button onClick={() => setShowReadingModal(false)} className="p-3 hover:bg-white rounded-full text-slate-400 transition-all hover:text-rose-500 hover:rotate-90"><Icon name="X" size={24} /></button>
+                                        <button onClick={() => setShowReadingModal(false)} className="p-3 rounded-full text-slate-400 transition-all hover:text-rose-500 hover:rotate-90"><Icon name="X" size={24} /></button>
                                     </div>
                                     <div className="p-12 overflow-y-auto text-xl leading-relaxed text-slate-700 whitespace-pre-wrap font-medium">{adaptedText || originalText}</div>
                                 </div>
