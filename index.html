@@ -62,7 +62,9 @@
             const [error, setError] = useState(null);
             
             const fileInputRef = useRef(null);
-            const apiKey = "AIzaSyDgPmh39Zy-FWsJEk-gYk92qyyb7PHWWp8"; // RECUERDA: Debes colocar tu clave de Google Gemini aquí
+            
+            // --- INSERTA TU API KEY DE GOOGLE AQUÍ ---
+            const apiKey = "AIzaSyDgPmh39Zy-FWsJEk-gYk92qyyb7PHWWp8"; 
 
             useEffect(() => {
                 if (window.pdfjsLib) {
@@ -91,9 +93,8 @@
                         const content = await file.text();
                         setOriginalText(content);
                     }
-                } catch (error) {
-                    console.error("Error al leer archivo:", error);
-                    setError("No pudimos leer el archivo. Intenta copiar y pegar el texto.");
+                } catch (err) {
+                    setError("Error al leer el archivo. Prueba con copiar y pegar el texto.");
                 } finally {
                     setIsAnalyzing(false);
                 }
@@ -102,91 +103,104 @@
             const generateQuestions = async () => {
                 if (!originalText.trim()) return;
                 if (!apiKey) {
-                    alert("Por favor, ingresa una API Key válida en el código para que el tutor funcione.");
+                    setError("Por favor, introduce tu API Key en el código fuente.");
                     return;
                 }
 
                 setIsAnalyzing(true);
-                setAnalysisProgress('Analizando lectura y diseñando retos...');
+                setAnalysisProgress('Generando retos de comprensión...');
                 setError(null);
 
-                const needsAdaptation = originalText.toLowerCase().includes('internacional') || originalText.toLowerCase().includes('international');
+                const needsAdaptation = originalText.toLowerCase().includes('internacional');
                 setIsInternational(needsAdaptation);
 
-                const systemPrompt = `Eres un profesor experto de 6to grado en México. 
-                TU OBJETIVO: Crear un cuestionario de comprensión de exactamente 10 preguntas basado en el texto.
-                ESTRUCTURA OBLIGATORIA:
+                const systemPrompt = `Eres un tutor experto de primaria. Tu tarea es generar exactamente 10 preguntas de opción múltiple basadas en el texto:
                 - 4 preguntas de nivel LITERAL.
                 - 3 preguntas de nivel INFERENCIAL.
                 - 3 preguntas de nivel CRÍTICO.
-                ${needsAdaptation ? 'ALUMNO EXTRANJERO (Nivel A1): Simplifica el texto y las preguntas.' : ''}
-                Responde ÚNICAMENTE con JSON: {"adaptedText": "...", "questions": [{"id": "q1", "question": "...", "options": ["A", "B", "C", "D"], "correct_answer": "...", "level": "literal|inferencial|crítico"}]}`;
+                ${needsAdaptation ? 'Adaptación: Simplifica el lenguaje para nivel extranjero A1.' : ''}
+                Responde ÚNICAMENTE con un JSON:
+                {
+                  "adaptedText": "el texto original o simplificado",
+                  "questions": [
+                    {
+                      "id": "q1",
+                      "question": "texto de la pregunta",
+                      "options": ["Opción A", "Opción B", "Opción C", "Opción D"],
+                      "correct_answer": "Opción exacta correcta",
+                      "level": "literal|inferencial|crítico"
+                    }
+                  ]
+                }`;
 
                 try {
-                    const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-preview-09-2025:generateContent?key=${apiKey}`, {
+                    const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${apiKey}`, {
                         method: 'POST',
                         headers: { 'Content-Type': 'application/json' },
                         body: JSON.stringify({
                             contents: [{ parts: [{ text: `Texto original: ${originalText}` }] }],
                             systemInstruction: { parts: [{ text: systemPrompt }] },
-                            generationConfig: { responseMimeType: "application/json", temperature: 0.7 }
+                            generationConfig: { 
+                                responseMimeType: "application/json", 
+                                temperature: 0.7 
+                            }
                         })
                     });
 
-                    if (!response.ok) throw new Error("Error en la comunicación con la IA");
+                    if (!response.ok) {
+                        const data = await response.json();
+                        throw new Error(data.error?.message || "Error en la comunicación con la IA.");
+                    }
 
                     const data = await response.json();
-                    const res = JSON.parse(data.candidates[0].content.parts[0].text);
+                    const rawResponse = data.candidates[0].content.parts[0].text;
+                    const res = JSON.parse(rawResponse);
                     
                     setAdaptedText(res.adaptedText || originalText);
                     setQuestions(res.questions || []);
                     setStep('quiz');
                 } catch (e) { 
-                    console.error("Error en la IA:", e);
-                    setError("Hubo un problema al generar las preguntas. Revisa tu conexión o tu API Key.");
+                    setError("Error del sistema: " + e.message);
                 } finally { 
                     setIsAnalyzing(false); 
                 }
             };
 
             return (
-                <div className="min-h-screen p-4 md:p-8">
+                <div className="min-h-screen p-4 md:p-8 bg-slate-50">
                     <div className="max-w-4xl mx-auto">
                         <header className="flex items-center justify-between mb-8 bg-white p-6 rounded-2xl shadow-sm border border-slate-200">
                             <div className="flex items-center gap-4">
                                 <div className="bg-blue-600 p-3 rounded-xl text-white shadow-lg">
                                     <Icon name="BookOpen" />
                                 </div>
-                                <div>
-                                    <h1 className="text-xl font-bold text-slate-900">Tutor de Comprensión</h1>
-                                    <p className="text-xs text-slate-500 italic text-blue-600">Nivel Primaria</p>
-                                </div>
+                                <h1 className="text-xl font-bold text-slate-900">Tutor de Comprensión</h1>
                             </div>
                             {isInternational && (
-                                <div className="bg-indigo-100 text-indigo-700 px-3 py-1 rounded-full text-[10px] font-black border border-indigo-200 uppercase tracking-tighter">
-                                    Modo Internacional A1
+                                <div className="bg-indigo-100 text-indigo-700 px-3 py-1 rounded-full text-[10px] font-black uppercase tracking-widest border border-indigo-200">
+                                    Modo Internacional
                                 </div>
                             )}
                         </header>
 
                         {error && (
-                            <div className="mb-6 bg-red-50 border border-red-100 text-red-600 p-4 rounded-2xl text-sm flex items-center gap-3">
-                                <Icon name="AlertCircle" size={20} />
-                                {error}
+                            <div className="mb-6 bg-rose-50 border border-rose-100 text-rose-700 p-5 rounded-2xl text-sm flex items-start gap-3 animate-in">
+                                <Icon name="AlertCircle" />
+                                <p className="font-medium">{error}</p>
                             </div>
                         )}
 
                         {step === 'input' && (
                             <div className="bg-white p-8 rounded-3xl border border-slate-200 shadow-sm space-y-6 animate-in">
-                                <div onClick={() => fileInputRef.current?.click()} className="border-2 border-dashed border-slate-200 p-10 rounded-2xl text-center cursor-pointer hover:border-blue-400 hover:bg-blue-50 transition-all group">
+                                <div onClick={() => fileInputRef.current?.click()} className="border-2 border-dashed border-slate-200 p-10 rounded-2xl text-center cursor-pointer hover:bg-blue-50 transition-all group">
                                     <input type="file" ref={fileInputRef} onChange={handleFileUpload} className="hidden" />
-                                    <div className="text-blue-600 mb-2 group-hover:scale-110 transition-transform flex justify-center"><Icon name="Upload" size={40} /></div>
-                                    <p className="font-bold text-slate-700 text-lg">Subir Lectura (PDF o TXT)</p>
-                                    <p className="text-sm text-slate-400">Haz clic aquí para cargar tu archivo</p>
+                                    <Icon name="Upload" size={40} className="text-blue-600 mb-2 mx-auto group-hover:scale-110 transition-transform" />
+                                    <p className="font-bold text-slate-700">Subir Lectura (PDF o TXT)</p>
+                                    <p className="text-sm text-slate-400">O arrastra el archivo aquí</p>
                                 </div>
                                 <textarea 
-                                    className="w-full h-44 p-5 bg-slate-50 border border-slate-100 rounded-2xl outline-none focus:ring-4 focus:ring-blue-500/10 transition-all resize-none text-slate-700" 
-                                    placeholder="Pega aquí el contenido..." 
+                                    className="w-full h-44 p-5 bg-slate-50 border border-slate-200 rounded-2xl outline-none focus:ring-4 focus:ring-blue-500/10 transition-all resize-none text-slate-700" 
+                                    placeholder="Pega el texto aquí..." 
                                     value={originalText} 
                                     onChange={(e) => setOriginalText(e.target.value)} 
                                 />
@@ -195,27 +209,29 @@
                                     disabled={!originalText.trim() || isAnalyzing} 
                                     className="w-full bg-blue-600 hover:bg-blue-700 disabled:bg-slate-300 text-white py-5 rounded-2xl font-black text-lg shadow-xl shadow-blue-100 transition-all active:scale-[0.98]"
                                 >
-                                    {isAnalyzing ? "Generando 10 retos..." : "Comenzar Tutoría"}
+                                    {isAnalyzing ? "Analizando contenido..." : "Comenzar Tutoría"}
                                 </button>
                             </div>
                         )}
 
                         {step === 'quiz' && (
                             <div className="space-y-6 animate-in pb-28">
-                                <div className="bg-indigo-50 border border-indigo-100 p-5 rounded-2xl flex items-start gap-4 text-indigo-900 text-sm italic">
-                                    <div className="text-indigo-600 mt-0.5"><Icon name="Info" size={20} /></div>
-                                    <p>He preparado 10 preguntas. Usa el botón del ojo azul para volver a leer el texto si lo necesitas.</p>
-                                </div>
                                 {questions.map((q, i) => (
-                                    <div key={q.id || i} className="bg-white p-8 rounded-3xl border border-slate-200 shadow-sm">
+                                    <div key={i} className="bg-white p-8 rounded-3xl border border-slate-200 shadow-sm">
                                         <div className="flex justify-between items-center mb-5">
                                             <span className="text-[10px] font-black uppercase tracking-widest text-slate-300">Reto {i+1} de 10</span>
-                                            <span className={`text-[9px] font-black px-3 py-1 rounded-full uppercase tracking-widest ${q.level === 'crítico' || q.level === 'crítico' ? 'bg-purple-50 text-purple-600' : q.level === 'inferencial' ? 'bg-amber-50 text-amber-600' : 'bg-blue-50 text-blue-600'}`}>{q.level}</span>
+                                            <span className={`text-[9px] font-black px-3 py-1 rounded-full uppercase tracking-widest ${q.level === 'crítico' ? 'bg-purple-50 text-purple-600' : q.level === 'inferencial' ? 'bg-amber-50 text-amber-600' : 'bg-blue-50 text-blue-600'}`}>{q.level}</span>
                                         </div>
                                         <p className="font-bold text-slate-800 mb-6 leading-snug text-xl">{q.question}</p>
                                         <div className="grid gap-3">
                                             {q.options?.map(opt => (
-                                                <button key={opt} onClick={() => setAnswers({...answers, [q.id]: opt})} className={`w-full text-left p-5 rounded-2xl border-2 transition-all duration-200 ${answers[q.id] === opt ? 'border-blue-600 bg-blue-50 text-blue-800 font-bold shadow-md' : 'border-slate-50 bg-slate-50 text-slate-600 hover:border-slate-200'}`}>{opt}</button>
+                                                <button 
+                                                    key={opt} 
+                                                    onClick={() => setAnswers({...answers, [i]: opt})} 
+                                                    className={`w-full text-left p-5 rounded-2xl border-2 transition-all duration-200 ${answers[i] === opt ? 'border-blue-600 bg-blue-50 text-blue-800 font-bold shadow-md' : 'border-slate-50 bg-slate-50 text-slate-600 hover:border-slate-200'}`}
+                                                >
+                                                    {opt}
+                                                </button>
                                             ))}
                                         </div>
                                     </div>
@@ -224,9 +240,8 @@
                         )}
 
                         {step === 'quiz' && (
-                            <button onClick={() => setShowReadingModal(true)} className="fixed bottom-10 right-10 bg-white border-2 border-blue-600 text-blue-600 p-5 rounded-full shadow-2xl hover:scale-110 active:scale-90 transition-all z-40 group">
+                            <button onClick={() => setShowReadingModal(true)} className="fixed bottom-10 right-10 bg-white border-2 border-blue-600 text-blue-600 p-5 rounded-full shadow-2xl hover:scale-110 active:scale-90 transition-all z-40">
                                 <Icon name="Eye" size={32} />
-                                <span className="absolute right-20 top-1/2 -translate-y-1/2 bg-slate-900 text-white text-[10px] px-3 py-2 rounded-xl opacity-0 group-hover:opacity-100 transition-opacity whitespace-nowrap font-black uppercase tracking-widest pointer-events-none">Revisar Lectura</span>
                             </button>
                         )}
 
@@ -234,8 +249,8 @@
                             <div className="fixed inset-0 bg-slate-900/90 backdrop-blur-md flex items-center justify-center p-4 z-[100] animate-in">
                                 <div className="bg-white rounded-[3rem] max-w-2xl w-full max-h-[85vh] flex flex-col overflow-hidden shadow-2xl border border-white/20">
                                     <div className="p-8 border-b border-slate-100 flex justify-between items-center bg-blue-50/50">
-                                        <div className="flex items-center gap-3"><div className="text-blue-600"><Icon name="BookOpen" size={24} /></div><h2 className="font-black text-slate-900 uppercase text-sm tracking-widest">Texto de Apoyo</h2></div>
-                                        <button onClick={() => setShowReadingModal(false)} className="p-3 rounded-full text-slate-400 transition-all hover:text-rose-500 hover:rotate-90"><Icon name="X" size={24} /></button>
+                                        <div className="flex items-center gap-3"><Icon name="BookOpen" size={24} className="text-blue-600" /><h2 className="font-black text-slate-900 uppercase text-sm tracking-widest">Lectura Original</h2></div>
+                                        <button onClick={() => setShowReadingModal(false)} className="p-3 rounded-full text-slate-400 hover:text-rose-500 transition-all"><Icon name="X" size={24} /></button>
                                     </div>
                                     <div className="p-12 overflow-y-auto text-xl leading-relaxed text-slate-700 whitespace-pre-wrap font-medium">{adaptedText || originalText}</div>
                                 </div>
